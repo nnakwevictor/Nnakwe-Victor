@@ -1,0 +1,90 @@
+{
+  "entities": {
+    "Property": {
+      "collection": "properties",
+      "description": "Luxury property listings with location, price, and architectural luxury category",
+      "fields": {
+        "title": { "type": "string", "required": true },
+        "description": { "type": "string", "required": true },
+        "price": { "type": "number", "required": true },
+        "formattedPrice": { "type": "string", "required": true },
+        "currency": { "type": "string", "required": true },
+        "countryCode": { "type": "string", "required": true },
+        "state": { "type": "string", "required": true },
+        "city": { "type": "string", "required": true },
+        "neighbourhood": { "type": "string", "required": true },
+        "luxuryCategory": { "type": "string", "required": true },
+        "propertyType": { "type": "string", "required": true },
+        "listingType": { "type": "string", "required": true },
+        "status": { "type": "string", "required": true },
+        "bedrooms": { "type": "number", "required": true },
+        "bathrooms": { "type": "number", "required": true },
+        "sizeSqFt": { "type": "number", "required": false },
+        "isVerified": { "type": "boolean", "required": true },
+        "titleDocument": { "type": "string", "required": true },
+        "images": { "type": "array", "required": true },
+        "agentId": { "type": "string", "required": true },
+        "agentName": { "type": "string", "required": true },
+        "createdAt": { "type": "timestamp", "required": true },
+        "updatedAt": { "type": "timestamp", "required": false }
+      }
+    },
+    "User": {
+      "collection": "users",
+      "description": "Registered clients, certified brokers, and platform administrators",
+      "fields": {
+        "email": { "type": "string", "required": true },
+        "name": { "type": "string", "required": true },
+        "role": { "type": "string", "required": true },
+        "preferredCountry": { "type": "string", "required": true },
+        "isVerified": { "type": "boolean", "required": true },
+        "createdAt": { "type": "timestamp", "required": true }
+      }
+    },
+    "Notification": {
+      "collection": "users/{userId}/notifications",
+      "description": "Client messages and welcome notifications upon sign-in or registration",
+      "fields": {
+        "userId": { "type": "string", "required": true },
+        "title": { "type": "string", "required": true },
+        "message": { "type": "string", "required": true },
+        "type": { "type": "string", "required": true },
+        "read": { "type": "boolean", "required": true },
+        "createdAt": { "type": "timestamp", "required": true }
+      }
+    },
+    "Enquiry": {
+      "collection": "enquiries",
+      "description": "Client confidential enquiries sent to listing advisors",
+      "fields": {
+        "propertyId": { "type": "string", "required": true },
+        "propertyTitle": { "type": "string", "required": true },
+        "customerId": { "type": "string", "required": true },
+        "customerName": { "type": "string", "required": true },
+        "customerEmail": { "type": "string", "required": true },
+        "customerPhone": { "type": "string", "required": true },
+        "agentId": { "type": "string", "required": true },
+        "message": { "type": "string", "required": true },
+        "status": { "type": "string", "required": true },
+        "createdAt": { "type": "timestamp", "required": true }
+      }
+    },
+    "Inspection": {
+      "collection": "inspections",
+      "description": "Scheduled private viewings for luxury estates",
+      "fields": {
+        "propertyId": { "type": "string", "required": true },
+        "propertyTitle": { "type": "string", "required": true },
+        "customerId": { "type": "string", "required": true },
+        "customerName": { "type": "string", "required": true },
+        "customerPhone": { "type": "string", "required": true },
+        "agentId": { "type": "string", "required": true },
+        "inspectionDate": { "type": "string", "required": true },
+        "timeSlot": { "type": "string", "required": true },
+        "notes": { "type": "string", "required": false },
+        "status": { "type": "string", "required": true },
+        "createdAt": { "type": "timestamp", "required": true }
+      }
+    }
+  }
+}

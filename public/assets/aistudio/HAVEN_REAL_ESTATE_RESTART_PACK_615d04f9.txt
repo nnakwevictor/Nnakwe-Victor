@@ -1,0 +1,699 @@
+# HAVEN REAL ESTATE — COMPLETE RESTART PACK
+
+**Purpose:** Rebuild or continue the HAVEN REAL ESTATE application from one organized project brief.
+
+**Important archive note:** This document consolidates the project requirements, decisions, code fragments, architecture notes, prompts, and issues preserved in the conversation context available to me. It is not a verbatim export of every historical chat message. Some original code blocks—especially the full Firestore and Storage rules—are not present in the available context, so I have not invented them or labelled reconstructed examples as your original code.
+
+---
+
+## 1. Project goal
+
+Build **HAVEN REAL ESTATE**, a professional international real-estate marketplace, starting with strong support for Nigeria and also supporting:
+
+- Nigeria (`NG`)
+- United States (`US`)
+- United Kingdom (`GB`)
+- United Arab Emirates (`AE`)
+
+The application should support customers, real-estate agents, and administrators. Visitors should be able to browse publicly available published properties. Signed-in customers should be able to save properties, make enquiries, and request inspections. Agents should manage their own listings and customer enquiries. Administrators should review listings, verify agents, manage the platform, and oversee reports.
+
+The desired outcome is a functioning application connected to Firebase, with a professional responsive interface and a real Android APK that can be installed on a physical Android phone for testing. A website link or PWA alone is not an APK.
+
+## 2. What was already discussed or generated
+
+### Architecture and internationalization
+
+The project was described as being refactored from a single-country prototype into an international real-estate marketplace, with attention to:
+
+- Multi-jurisdiction role-based access control.
+- Field-level data validation.
+- Confidential document protection.
+- Firestore and Storage security rules.
+- Country-specific locations and currencies.
+- Customer, agent, and admin experiences.
+
+A previously shown project tree included:
+
+```text
+haven-real-estate/
+├── firestore.rules
+├── storage.rules
+├── package.json
+└── src/
+    ├── components/
+    │   ├── Navigation.jsx
+    │   ├── PropertyCard.jsx
+    │   ├── FilterModal.jsx
+    │   ├── MapFallback.jsx
+    │   └── Toast.jsx
+    ├── views/
+    │   ├── HomeView.jsx
+    │   ├── ExploreView.jsx
+    │   ├── PropertyDetailView.jsx
+    │   ├── CustomerDashboard.jsx
+    │   ├── AgentDashboard.jsx
+    │   ├── AdminDashboard.jsx
+    │   └── AuthModal.jsx
+    ├── context/
+    │   └── AppContext.jsx
+    └── data/
+        └── nigerianData.js
+```
+
+This is the structure shown in earlier builder output, not a verified current inventory of the project files.
+
+### Frontend technology identified from the generated code
+
+The builder output appeared to use:
+
+- React 18
+- Tailwind CSS
+- Lucide icons (`lucide-react`)
+- JavaScript/JSX
+- Firebase as the intended backend
+
+The code shown was React web code. It was **not established** that the project was already React Native or Expo. The exact builder and exact current framework still need to be confirmed by inspecting its files.
+
+### Existing builder output and concerns
+
+The builder described an “Autonomous Hybrid Engine” that could use Firebase in production mode or browser IndexedDB/local persistence when Firebase keys were unavailable.
+
+The earlier generated code also appeared to contain:
+
+- A default `currentUser = INITIAL_USERS[0]` path that could make a demo admin the default user.
+- Demo accounts such as `admin@haven.ng`, `agent@haven.ng`, and `buyer@haven.ng`.
+- LocalStorage-based persistence for properties, favourites, and enquiries.
+- Demo property listings.
+- Old role and status values that conflicted with the later standardized values.
+
+These are not suitable as production authentication or authorization. Demo data may exist in a clearly isolated demo/development environment, but production access must use Firebase Authentication and real database records.
+
+---
+
+## 3. Standard values agreed for the application
+
+Use these exact values everywhere in application code, Firestore documents, queries, validation, and security rules.
+
+### User roles
+
+- `customer`
+- `agent`
+- `admin`
+
+### Property statuses
+
+- `draft`
+- `pending_review`
+- `published`
+- `rejected`
+- `sold`
+- `rented`
+
+### Enquiry statuses
+
+- `unread`
+- `contacted`
+- `resolved`
+
+### Legacy values to remove or migrate
+
+- `seeker` → `customer`
+- `approved` → `published` (only where the old value truly represented a publicly approved listing)
+- `pending` → `pending_review` (only where the old value represented a listing awaiting review)
+
+Do not blindly replace strings without checking the meaning of each record. Back up data and migrate existing records safely.
+
+### Centralized enum code
+
+This exact enum pattern was provided in the latest implementation brief:
+
+```javascript
+export const USER_ROLES = Object.freeze({
+  CUSTOMER: 'customer',
+  AGENT: 'agent',
+  ADMIN: 'admin'
+});
+
+export const PROPERTY_STATUSES = Object.freeze({
+  DRAFT: 'draft',
+  PENDING_REVIEW: 'pending_review',
+  PUBLISHED: 'published',
+  REJECTED: 'rejected',
+  SOLD: 'sold',
+  RENTED: 'rented'
+});
+
+export const ENQUIRY_STATUSES = Object.freeze({
+  UNREAD: 'unread',
+  CONTACTED: 'contacted',
+  RESOLVED: 'resolved'
+});
+```
+
+Suggested location: `src/constants/enums.js` (or the project’s existing constants directory, consistently imported everywhere).
+
+---
+
+## 4. Firebase and data architecture requirements
+
+### Firebase services
+
+Use:
+
+- Firebase Authentication for account identity and sessions.
+- Cloud Firestore for application records.
+- Firebase Storage for property images and private documents.
+- Firestore Security Rules and Storage Security Rules.
+- Firebase App Check where supported and configured.
+- Trusted backend code / Cloud Functions for sensitive administrative operations and audit logging where appropriate.
+
+Never put Firebase Admin SDK credentials or service-account private keys in frontend code.
+
+### Authentication requirements
+
+- Real registration and login.
+- Logout.
+- Persistent Firebase authentication session.
+- Password reset if email/password authentication is used.
+- Profile management.
+- Agent verification workflow.
+- Role-based navigation based on trusted authorization data.
+- No automatic demo-admin login.
+- No LocalStorage value may be treated as proof of identity or admin access.
+
+Use Firebase's authentication state listener. The application must support three states:
+
+1. Authentication is still loading.
+2. A real authenticated user exists.
+3. No authenticated user exists (`currentUser === null`).
+
+A public visitor must still be able to browse public published properties. Account-required actions should redirect to sign-in or show an authentication prompt.
+
+### Null-safe examples
+
+Do not use `currentUser.uid`, `currentUser.role`, `currentUser.displayName`, `currentUser.phone`, or `currentUser.email` unless `currentUser` has been checked.
+
+Safe basic pattern:
+
+```javascript
+if (!currentUser) {
+  // Handle signed-out state before accessing currentUser properties.
+  return;
+}
+
+const userId = currentUser.uid;
+```
+
+In components, derive a safe value:
+
+```javascript
+const userId = currentUser?.uid ?? null;
+const userEmail = currentUser?.email ?? '';
+```
+
+Do not use optional chaining as a substitute for authorization. Security must be enforced by Firebase rules and trusted backend code.
+
+### Recommended core collections
+
+The previous discussion identified these collections:
+
+- `users`
+- `properties`
+- `enquiries`
+- `favourites`
+- `inspections`
+- `confidential_documents`
+- `audit_logs`
+- `fraud_reports`
+
+The exact field schema must be unified across frontend, Firestore, Storage, and rules. The following are requirements/contracts to validate against the actual project—not a claim that every field already exists.
+
+#### Users
+
+A user profile should associate with the authenticated Firebase UID. Store only fields needed by the product. Authorization must not rely on a user-editable `role` field. Admin/agent privileges should be granted through trusted custom claims or another trusted backend-controlled mechanism.
+
+#### Properties
+
+A property should consistently represent its title, description, listing type, price, currency, country, location, amenities, images, owner/agent ID, status, verification status, and timestamps.
+
+A representative property data shape shown in the latest prompt was:
+
+```javascript
+{
+  title: "",
+  description: "",
+  listingType: "sale",
+  originalPrice: 0,
+  currency: "NGN",
+  countryCode: "NG",
+  state: "",
+  city: "",
+  lga: "",
+  neighbourhood: "",
+  address: "",
+  bedrooms: 0,
+  bathrooms: 0,
+  toilets: 0,
+  parking: 0,
+  amenities: [],
+  images: [],
+  agentId: "",
+  status: "pending_review",
+  verificationStatus: "unverified",
+  createdAt: null,
+  updatedAt: null
+}
+```
+
+Use Firestore server timestamps for trusted creation/update times. Preserve the document ID as the listing identifier.
+
+#### Enquiries
+
+Requirements discussed:
+
+- The sender/customer, assigned agent, and authorized administrators can read the enquiry as appropriate.
+- Creation must validate the sender or permitted guest-submission rules.
+- Agents may only manage enquiries assigned to them.
+- Status must use `unread`, `contacted`, or `resolved`.
+- Ownership and immutable identity fields must not be changed during status updates.
+
+#### Favourites
+
+Requirements discussed:
+
+- A customer can read, create, and delete their own favourites.
+- A customer cannot write another user’s favourites.
+- Prefer a deterministic document ID or validated ownership fields to prevent duplicate favourites.
+- Include a creation timestamp if the app needs sorting/history.
+
+#### Inspections
+
+Requirements discussed:
+
+- Customer, assigned agent, and authorized administrator can read the relevant booking.
+- Customers create bookings for themselves.
+- Agents can confirm, decline, or reschedule bookings assigned to them.
+- Customers can cancel their own eligible bookings.
+- Restrict updates to the exact fields permitted for each action. Do not allow a status-only action to alter ownership, property ID, customer ID, or agent ID.
+
+#### Confidential documents
+
+Title deeds, identity evidence, and other confidential documents must not be publicly readable. Validate document ownership, path, content type, size, and authorized access in Storage and Firestore. Do not assume Firestore rules automatically secure Storage files.
+
+#### Audit logs
+
+Do not let arbitrary clients create trusted audit entries. Generate important audit records from trusted backend code (for example, Cloud Functions) so a user cannot fabricate an administrative history.
+
+#### Fraud reports
+
+Protect reports from unauthorized reading and abuse. Validate required fields, prevent users from reading other users’ private reports, and consider rate limiting or abuse controls in trusted backend logic.
+
+---
+
+## 5. Firestore security rules: design decisions and issues identified
+
+The user previously pasted several versions of Firestore Rules beginning with:
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+```
+
+The code fragments and review context included helpers such as:
+
+- `isAuthenticated()` — checks `request.auth != null`.
+- `isOwner(userId)` — checks the authenticated UID matches the target user ID.
+- `isAdmin()` — checks a trusted admin custom claim, previously shown as `request.auth.token.admin == true`.
+- `isAgent()` — an agent authorization helper was part of the discussed role system.
+- `isValidString(...)` — a validation helper appeared in one of the pasted versions.
+
+The full original rules file is not preserved in the available context, so it cannot be reprinted verbatim here.
+
+### Earlier collection-level policy discussed
+
+- `users`: users can access their own private profile; administrators have authorized management access; agent public profiles may be readable as intended; arbitrary authenticated users should not be able to read all private user documents.
+- `properties`: only published listings are public by default; agents can create their own draft/pending-review listings; agents cannot self-publish or change verification; administrators review and publish/reject.
+- `enquiries`: access is limited to the sender/customer, assigned agent, and administrators; creation and updates require validation.
+- `favourites`: owner-only access.
+- `inspections`: access limited to customer, assigned agent, and administrators; updates constrained by actor and action.
+- `confidential_documents`: strict, private access.
+- `audit_logs`: trusted write path; private authorized read path.
+- `fraud_reports`: protected reporting and review workflow.
+
+### Security weaknesses found in generated versions
+
+The review identified these risks in earlier generated rules/code:
+
+1. Some user rules allowed every authenticated user to read user documents too broadly.
+2. Some user updates lacked a sufficiently restrictive field whitelist.
+3. A user could potentially create their own profile with arbitrary role/privilege fields unless explicitly prohibited.
+4. An agent property update rule was too broad: the agent could potentially change sensitive fields beyond the permitted listing fields.
+5. Some property updates were unrestricted for an owning agent or admin instead of validating changed fields and state transitions.
+6. Inspection updates could modify too many fields instead of only the fields allowed for cancellation, confirmation, decline, or rescheduling.
+7. Enquiry status changes needed strict enum validation and immutable ownership fields.
+8. Confidential-document metadata needed stricter validation.
+9. Arbitrary client-created audit logs are not trustworthy.
+10. Fraud-report creation needs validation and anti-abuse controls.
+11. A favourites rule using `request.resource.data` for all read/write operations could fail for reads or deletes because that object is not available in the same way for every operation.
+
+Do not fix these issues by opening access broadly. Use restrictive authorization and validation.
+
+### Critical Firestore query rule
+
+**Firestore Security Rules are not filters.** A query must be constructed so its potential result set satisfies the rule.
+
+Public property browsing should explicitly request published records, for example:
+
+```javascript
+query(
+  collection(db, "properties"),
+  where("status", "==", "published")
+);
+```
+
+Agent queries should explicitly restrict records to the authenticated agent’s UID, for example:
+
+```javascript
+query(
+  collection(db, "properties"),
+  where("agentId", "==", auth.currentUser.uid)
+);
+```
+
+The exact field names must match the final database schema.
+
+If the public Explore page is allowed to include sold/rented listings, the security rules must intentionally permit those public-safe documents. Do not expose sensitive fields through documents merely to make this filter work. Firestore rules do not provide field-by-field redaction of a returned document; consider separating public listing data from private operational data.
+
+---
+
+## 6. ExploreView.jsx — work completed and issues identified
+
+The user most recently pasted an `ExploreView.jsx` component using:
+
+```javascript
+import React, { useState, useMemo } from 'react';
+import { Building2 } from 'lucide-react';
+import { useApp } from '../context/AppContext';
+import { PropertyCard } from '../components/PropertyCard';
+import { PROPERTY_STATUSES } from '../constants/enums';
+```
+
+The component accessed:
+
+```javascript
+const { properties, countryContext, setCountryContext } = useApp();
+const [filterType, setFilterType] = useState("all");
+const [searchQuery, setSearchQuery] = useState("");
+const [filterSort, setFilterSort] = useState("newest");
+const [includeClosed, setIncludeClosed] = useState(false);
+```
+
+Its filtering logic was designed to:
+
+- Show only `PROPERTY_STATUSES.PUBLISHED` by default.
+- Optionally include `SOLD` and `RENTED`.
+- Filter by country.
+- Filter listing type.
+- Search title, city, and neighbourhood.
+- Sort by lowest price, highest price, or newest.
+
+### Mismatches to fix
+
+The component expected these fields:
+
+- `countryCode`
+- `listingType`
+- `originalPrice`
+- `city`
+- `neighbourhood`
+- `createdAt`
+
+Earlier sample property data used some different names, including:
+
+- `price`
+- `state`
+- `lga`
+- `address`
+
+Unify the property schema. Do not leave one component using `originalPrice` while another expects `price`, unless a deliberate adapter handles both consistently.
+
+The component displayed wording similar to “verified published properties.” This is misleading: `published` does not necessarily mean independently verified. Keep `status` and `verificationStatus` separate and only display “verified” when the separate verification field confirms it.
+
+Sorting must handle missing, null, string, or invalid prices/dates without crashing. Currency comparisons must be meaningful; do not compare raw NGN, USD, GBP, EUR, and AED values as if they were one currency.
+
+The component also needs loading, error, and empty states, and must not assume `properties` is always an array while data is loading.
+
+### Previously requested Explore page completion
+
+- Only published listings by default.
+- Optional sold/rented inclusion.
+- Country filter.
+- Sale/rent/shortlet filter.
+- Search by title, country, state, city, LGA, neighbourhood, and address.
+- Newest, lowest-price, highest-price sorting.
+- Safe handling of missing dates and prices.
+- Correct property count and listing labels.
+- Responsive mobile layout.
+- Firestore query restrictions and pagination.
+- Loading, empty, and error states.
+
+---
+
+## 7. UI and product requirements
+
+### Branding
+
+Product name: **HAVEN REAL ESTATE**.
+
+Design direction:
+
+- Premium, professional real-estate marketplace.
+- Deep navy blue, white, and restrained luxury-gold accents.
+- Modern readable typography.
+- Clean property cards and image galleries.
+- Consistent spacing, controls, icons, buttons, and navigation.
+- Responsive layouts on Android phones, tablets, and desktop screens.
+
+### Customer features
+
+- Home screen.
+- Explore/search marketplace.
+- Property detail pages.
+- Property image gallery.
+- Advanced filters and sorting.
+- Favourites.
+- Customer dashboard.
+- Enquiry submission and tracking.
+- Inspection booking and tracking.
+- Profile management and account settings.
+
+### Agent features
+
+- Agent dashboard.
+- Agent registration and verification workflow.
+- Create property listings.
+- Upload multiple listing images.
+- Edit own listings.
+- Track draft, pending-review, published, rejected, sold, and rented states as applicable.
+- Manage enquiries assigned to the agent.
+- Manage inspection requests assigned to the agent.
+- View genuine listing statistics.
+- Agent profile.
+
+### Administrator features
+
+- Secure administrator access.
+- Admin dashboard.
+- User and agent management.
+- Property approval queue.
+- Approve or reject listings.
+- Agent/property verification.
+- Fraud-report review.
+- Inspection oversight.
+- Enquiry oversight.
+- Audit-log review.
+- Genuine platform statistics.
+
+Do not show made-up production statistics, fake customer activity, or demo records as live data.
+
+---
+
+## 8. International and Nigerian market requirements
+
+Nigeria must be fully supported, including all 36 states and the Federal Capital Territory, plus relevant local government areas, cities, and neighbourhoods.
+
+Support Nigerian naira (`NGN`) formatting and reasonable Nigerian phone-number validation.
+
+Also support the United States, United Kingdom, and United Arab Emirates. Use appropriate country-specific location, currency, and formatting rules. Do not assume all countries use Nigerian address or phone formats.
+
+The earlier project included a data module named `src/data/nigerianData.js`. Verify its actual contents, completeness, and accuracy rather than assuming it contains all locations.
+
+---
+
+## 9. Android application and APK decision
+
+The user wants to install HAVEN REAL ESTATE on an Android phone and test it before app-store publication.
+
+First inspect the framework:
+
+- If it is already Expo/React Native, use the appropriate native Android build process.
+- If it is a React web application (for example, Vite + React), Capacitor can package the web app into an Android application. Configure and test the Android wrapper properly.
+
+Do not call a browser preview, website link, or PWA an APK.
+
+For a Capacitor route, the builder should:
+
+- Configure the Android project.
+- Set app display name to `HAVEN REAL ESTATE`.
+- Choose a unique Android application ID/package name.
+- Configure app icon and splash screen.
+- Verify Android network access and Firebase connectivity.
+- Add only the required Android permissions.
+- Build a debug APK for private testing.
+- Provide the actual `app-debug.apk` file and direct download location.
+
+Do not publish to an app store until the user has tested the build and the required legal, privacy, security, and store-release work is complete.
+
+---
+
+## 10. Testing checklist
+
+Test with separate identities and permissions:
+
+1. Signed-out visitor.
+2. Customer.
+3. Agent.
+4. Administrator.
+
+Verify:
+
+- Registration.
+- Login.
+- Logout.
+- Authentication persistence.
+- Null/loading auth state.
+- Public published-property browsing.
+- Sold/rented visibility policy.
+- Country and listing-type filters.
+- Text search.
+- Sorting and currency handling.
+- Property creation.
+- Property editing.
+- Admin approval and rejection.
+- Agent cannot self-publish.
+- Agent cannot edit another agent’s private listings.
+- Customer favourites.
+- Enquiry submission and status changes.
+- Inspection creation, rescheduling, and cancellation.
+- Profile privacy.
+- Unauthorized access attempts.
+- Firestore and Storage rules.
+- Property-image upload.
+- Responsive layouts.
+- Offline/network errors.
+
+Use Firebase Emulator Suite where possible. Report only tests that were actually executed. Clearly distinguish passed, failed, blocked, and not tested.
+
+---
+
+## 11. Main copy-and-paste master prompt
+
+Paste this into the AI builder while its existing HAVEN REAL ESTATE project is open. This consolidates the main implementation instruction previously given in the conversation.
+
+```text
+HAVEN REAL ESTATE — COMPLETE IMPLEMENTATION, FIREBASE INTEGRATION & ANDROID APK
+
+You are responsible for completing the existing HAVEN REAL ESTATE application.
+
+I am not asking you to create another prototype, redesign the application from scratch, or simply explain what needs to be done. Inspect the actual existing project, modify the real source files, integrate the backend, implement missing functionality, test the application, and prepare an installable Android APK.
+
+Preserve the existing HAVEN REAL ESTATE branding, luxury navy blue, white and gold visual identity, and working features.
+
+PHASE 1 — PROJECT AUDIT
+Inspect the entire project. Identify the framework and version, directory structure, components, views, Firebase configuration, Firestore schema, Storage configuration, authentication, security rules, dependencies, build configuration, missing features, broken imports, and conflicting schemas. Do not assume generated code is working without testing it.
+
+PHASE 2 — STANDARDIZED ENUMS
+Use exactly these values throughout the application:
+User roles: customer, agent, admin.
+Property statuses: draft, pending_review, published, rejected, sold, rented.
+Enquiry statuses: unread, contacted, resolved.
+Create a centralized constants/enums module. Remove legacy values seeker, approved, and pending only after checking and safely migrating their actual meaning. Back up existing data before migration.
+
+PHASE 3 — FIREBASE
+Integrate Firebase Authentication, Cloud Firestore, Firebase Storage, Firestore Rules, Storage Rules, and App Check where supported. Remove LocalStorage as the primary database and never use it as proof of identity or administrator authorization. Use real Firebase accounts and actual database records. Never expose Admin SDK credentials or service-account private keys in frontend code.
+
+PHASE 4 — NULL-SAFE AUTHENTICATION
+Use Firebase's authentication-state listener. Handle loading, authenticated, and unauthenticated states. Audit every currentUser access, including uid, role, displayName, phone, and email. Never dereference currentUser when it is null. Public visitors must still browse public published listings. Require authentication for protected actions. Optional chaining is not a substitute for backend authorization.
+
+PHASE 5 — SECURITY
+Use trusted Firebase custom claims or another trusted backend-controlled authorization mechanism for administrator and agent permissions. Never trust a role supplied by frontend JavaScript or a user-editable profile. Customers can access only their own private data. Agents can manage only their own listings and assigned enquiries/inspections. Agents cannot publish their own listings or alter verification. Administrators review and publish/reject listings. Restrict every update to a field whitelist and valid status transition. Protect confidential documents in both Firestore and Storage. Generate trusted audit logs from backend functions. Validate and protect fraud reports. Do not weaken rules to make a query work.
+
+PHASE 6 — PROPERTY SCHEMA
+Unify property fields throughout frontend, backend, database, and rules. The agreed representative fields are title, description, listingType, originalPrice, currency, countryCode, state, city, lga, neighbourhood, address, bedrooms, bathrooms, toilets, parking, amenities, images, agentId, status, verificationStatus, createdAt, and updatedAt. Adapt to the real project carefully; do not discard valid data. Use server timestamps and the Firestore document ID as the listing identifier.
+
+PHASE 7 — EXPLORE VIEW
+Complete src/views/ExploreView.jsx. Show only published listings by default. Allow sold/rented only through the intended optional filter. Filter by country and sale/rent/shortlet. Search title, country, state, city, LGA, neighbourhood, and address. Sort by newest, lowest price, and highest price safely. Handle missing prices and dates. Show accurate result counts, responsive cards, loading, error, and empty states. Never claim a property is verified merely because it is published; use verificationStatus separately. Do not compare raw prices in different currencies as though they were the same currency.
+
+Firestore Security Rules are not filters. Public queries must explicitly constrain status to published. If sold/rented records are publicly exposed, deliberately update the read policy and ensure no private fields are exposed. Agent queries must restrict agentId to the authenticated UID. Add required indexes and pagination.
+
+PHASE 8 — FEATURES
+Finish customer screens: home, marketplace, details, gallery, search, filters, favourites, customer dashboard, enquiries, inspections, profile, and settings.
+Finish agent screens: dashboard, verification, create/edit listings, multiple image uploads, enquiries, inspections, statistics, and profile.
+Finish admin screens: dashboard, user and agent management, listing approval/rejection, verification, fraud reports, inspection/enquiry oversight, audit logs, and genuine statistics.
+All dashboards must use real Firebase data. Never present fake demo activity as production data.
+
+PHASE 9 — INTERNATIONAL SUPPORT
+Support Nigeria (NG), United States (US), United Kingdom (GB), and United Arab Emirates (AE). Support Nigerian states and FCT, relevant LGAs and locations, NGN formatting, and Nigerian phone validation. Keep country-specific currency, location, and formatting rules for international users.
+
+PHASE 10 — DESIGN
+Preserve HAVEN branding: deep navy, white, restrained gold, readable typography, polished property cards and galleries, consistent navigation and controls. Test on Android phones, tablets, and desktop. Fix broken navigation, overflow, inaccessible buttons, and incomplete forms.
+
+PHASE 11 — TESTING
+Test visitor, customer, agent, and administrator accounts. Test auth, null states, public queries, filters, sorting, listing creation/editing/approval/rejection, agent permissions, favourites, enquiries, inspections, privacy, unauthorized access, image uploads, responsive layouts, and network errors. Use Firebase Emulator Suite where possible. Fix errors and report only tests actually executed. Distinguish passed, failed, blocked, and not tested.
+
+PHASE 12 — ANDROID APK
+Inspect the actual framework first. If Expo/React Native, use its Android build process. If React web, use Capacitor to package the existing application as an Android app. Do not provide a website link or call a PWA an APK. Configure Android app name HAVEN REAL ESTATE, a unique package ID, icon, splash screen, network access, Firebase connectivity, and required permissions. Build a debug APK named app-debug.apk for direct testing. Provide the actual APK and direct download location. Do not publish to an app store yet.
+
+PHASE 13 — DELIVERY
+Provide implementation summary, modified/created files, Firestore and Storage rules, migration results, Firebase integration results, actual test results, remaining errors, Android build configuration, and the actual installable APK with installation instructions.
+
+FINAL INSTRUCTION: Start working on the existing project now. Do not respond with another architecture proposal or another blueprint. Inspect files, implement changes, run tests, correct errors, and generate the Android test APK when ready. Preserve working functionality and existing user data. Do not claim completion without evidence. My immediate goal is to install HAVEN REAL ESTATE on my Android phone and test the actual application before public release.
+```
+
+---
+
+## 12. What is not yet verified / what must be supplied again
+
+The following items were not confirmed as completed in the conversation context:
+
+- The exact AI builder used for the current project.
+- The complete current source-code export.
+- The actual Firebase project configuration and whether it is connected successfully.
+- The complete current Firestore Rules file.
+- The complete current Storage Rules file.
+- Whether the enum module exists in the current project.
+- Whether the old schema migration has been run.
+- Whether the security issues listed above have all been fixed.
+- Whether the current framework is React web, Capacitor, Expo, or React Native.
+- Whether any APK has been successfully built or installed.
+- Whether the test checklist has been executed.
+
+No actual APK was generated in the conversation history available to this archive. The previous assistant supplied instructions for the builder to generate one; that is not evidence that a build exists.
+
+For a true verbatim source-code archive, export or upload the current project files (especially `firestore.rules`, `storage.rules`, `src/constants/enums.js`, `src/views/ExploreView.jsx`, `src/context/AppContext.jsx`, Firebase configuration, and `package.json`). Then each actual file can be consolidated without guessing.
+
+---
+
+## 13. Recommended order to restart safely
+
+1. Open the existing HAVEN REAL ESTATE project in the AI builder.
+2. Save/export a backup before asking the builder to make major changes.
+3. Paste the master prompt in Section 11.
+4. Ask the builder to show its audit: framework, actual files, Firebase connection status, and current schema.
+5. Have it reconcile enums and schemas before changing security rules.
+6. Have it correct Firestore and Storage rules and test them with visitor/customer/agent/admin identities.
+7. Complete the UI and all database-connected workflows.
+8. Run the test checklist.
+9. Only after the web/backend project is stable, package it for Android and build the debug APK.
+10. Install and test the APK on the phone before considering store publication.

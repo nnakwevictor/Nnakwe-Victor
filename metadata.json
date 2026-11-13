@@ -1,0 +1,6 @@
+{
+  "name": "Project X",
+  "description": "PROJECT X — GLOBAL PROPERTY GROUP. A New World of Property Opportunities. International real estate marketplace, residential & commercial properties, apartment & building management, landlord & developer ecosystems.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
